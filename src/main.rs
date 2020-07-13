@@ -68,8 +68,16 @@ pub fn main() {
     }
 
     while !window.should_close() {
+        // Process Events
         process_events(&mut window, &events);
 
+        // Render
+        unsafe {
+            gl::ClearColor(0.2, 0.3, 0.3, 1.0);
+            gl::Clear(gl::COLOR_BUFFER_BIT);
+        }
+
+        // Swap buffer and poll events
         window.swap_buffers();
         glfw_obj.poll_events();
     }
