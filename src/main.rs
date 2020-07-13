@@ -16,7 +16,7 @@ const VERTEX_SHADER_SOURCE: &str = r#"
 layout (location = 0) in vec3 pos;
 
 void main() {
-    gl_Position = vec4(pos.x, pos.y, pos.z, 1.0f);
+    gl_Position = vec4(pos, 1.0f);
 }
 "#;
 
@@ -150,21 +150,36 @@ fn setup_scene() -> (GLuint, GLuint) {
     unsafe {
         let shader_program = setup_program();
 
-        let vertices: [GLfloat; 9] = [-0.5, -0.5, 0.0, 0.5, -0.5, 0.0, 0.0, 0.5, 0.0];
+        let scene_vertices = [
+            0.5_f32, 0.5_f32, 0.0_f32, // Top right
+            0.5_f32, -0.5_f32, 0.0_f32, // Bottom right
+            -0.5_f32, -0.5_f32, 0.0_f32, // Bottom left
+            -0.5_f32, 0.5_f32, 0.0_f32, // Top left
+        ];
+        let scene_indices = [0_u32, 1_u32, 3_u32, 1_u32, 2_u32, 3_u32];
 
-        let (mut triangle_buffer_obj, mut triangle_array_obj) = (0, 0);
-        gl::GenVertexArrays(1, &mut triangle_array_obj);
-        gl::GenBuffers(1, &mut triangle_buffer_obj);
+        let (mut scene_buffer_obj, mut scene_array_obj, mut scene_element_buffer_obj) =
+            (0_u32, 0_u32, 0_u32);
+        gl::GenVertexArrays(1, &mut scene_array_obj);
+        gl::GenBuffers(1, &mut scene_buffer_obj);
+        gl::GenBuffers(1, &mut scene_element_buffer_obj);
 
-        // Bind objects
-        gl::BindVertexArray(triangle_array_obj);
-        gl::BindBuffer(gl::ARRAY_BUFFER, triangle_buffer_obj);
+        // Bind VAO
+        gl::BindVertexArray(scene_array_obj);
 
-        // Setup buffer data and properties
+        // Setup vertices data and properties
+        gl::BindBuffer(gl::ARRAY_BUFFER, scene_buffer_obj);
         gl::BufferData(
             gl::ARRAY_BUFFER,
-            (vertices.len() * mem::size_of::<GLfloat>()) as GLsizeiptr,
-            &vertices[0] as *const f32 as *const c_void,
+            (scene_vertices.len() * mem::size_of::<GLfloat>()) as GLsizeiptr,
+            &scene_vertices[0] as *const f32 as *const c_void,
+            gl::STATIC_DRAW,
+        );
+        gl::BindBuffer(gl::ELEMENT_ARRAY_BUFFER, scene_element_buffer_obj);
+        gl::BufferData(
+            gl::ELEMENT_ARRAY_BUFFER,
+            (scene_indices.len() * mem::size_of::<GLuint>()) as GLsizeiptr,
+            &scene_indices[0] as *const u32 as *const c_void,
             gl::STATIC_DRAW,
         );
         gl::VertexAttribPointer(
@@ -177,11 +192,14 @@ fn setup_scene() -> (GLuint, GLuint) {
         );
         gl::EnableVertexAttribArray(0);
 
-        // Unbind objects
+        // Unbind VAO
         gl::BindBuffer(gl::ARRAY_BUFFER, 0);
         gl::BindVertexArray(0);
+        gl::BindBuffer(gl::ELEMENT_ARRAY_BUFFER, 0);
 
-        (shader_program, triangle_array_obj)
+        // gl::PolygonMode(gl::FRONT_AND_BACK, gl::LINE);
+
+        (shader_program, scene_array_obj)
     }
 }
 
@@ -224,7 +242,7 @@ pub fn main() {
 
             gl::UseProgram(shader_program);
             gl::BindVertexArray(scene_array_obj);
-            gl::DrawArrays(gl::TRIANGLES, 0, 3);
+            gl::DrawElements(gl::TRIANGLES, 6, gl::UNSIGNED_INT, ptr::null());
             gl::BindVertexArray(0);
         }
 
