@@ -150,7 +150,7 @@ fn setup_scene() -> (GLuint, GLuint) {
     unsafe {
         let shader_program = setup_program();
 
-        let vertices: [f32; 9] = [-0.5, -0.5, 0.0, 0.5, -0.5, 0.0, 0.0, 0.5, 0.0];
+        let vertices: [GLfloat; 9] = [-0.5, -0.5, 0.0, 0.5, -0.5, 0.0, 0.0, 0.5, 0.0];
 
         let (mut triangle_buffer_obj, mut triangle_array_obj) = (0, 0);
         gl::GenVertexArrays(1, &mut triangle_array_obj);
