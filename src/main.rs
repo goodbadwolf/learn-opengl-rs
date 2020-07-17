@@ -13,19 +13,25 @@ const INIT_HEIGHT: u32 = 600;
 
 const VERTEX_SHADER_SOURCE: &str = r#"
 #version 330 core
-layout (location = 0) in vec3 pos;
+layout (location = 0) in vec3 a_pos;
+layout (location = 1) in vec3 a_color;
+
+out vec3 our_color;
 
 void main() {
-    gl_Position = vec4(pos, 1.0f);
+    gl_Position = vec4(a_pos, 1.0f);
+    our_color = a_color;
 }
 "#;
 
 const FRAGMENT_SHADER_SOURCE: &str = r#"
 #version 330 core
-out vec4 FragColor;
+in vec3 our_color;
+
+out vec4 frag_color;
 
 void main() {
-    FragColor = vec4(1.0f, 0.5f, 0.2f, 1.0f);
+    frag_color = vec4(our_color, 1.0f);
 }
 "#;
 
@@ -61,7 +67,7 @@ fn create_window(glfw_obj: &mut Glfw) -> Option<(Window, Receiver<(f64, WindowEv
     }
 }
 
-fn configure_gl(window: &mut Window) {
+unsafe fn configure_gl(window: &mut Window) {
     gl::load_with(|symbol| window.get_proc_address(symbol) as *const _);
 }
 
@@ -151,12 +157,11 @@ fn setup_scene() -> (GLuint, GLuint) {
         let shader_program = setup_program();
 
         let scene_vertices = [
-            0.5_f32, 0.5_f32, 0.0_f32, // Top right
-            0.5_f32, -0.5_f32, 0.0_f32, // Bottom right
-            -0.5_f32, -0.5_f32, 0.0_f32, // Bottom left
-            -0.5_f32, 0.5_f32, 0.0_f32, // Top left
+            0.75_f32, -0.75_f32, 0.0_f32, 1.0_f32, 0.0_f32, 0.0_f32,
+            -0.75_f32, -0.75_f32, 0.0_f32, 0.0_f32, 1.0_f32, 0.0_f32,
+            0.0_f32, 0.75_f32, 0.0_f32, 0.0_f32, 0.0_f32, 1.0_f32
         ];
-        let scene_indices = [0_u32, 1_u32, 3_u32, 1_u32, 2_u32, 3_u32];
+        let scene_indices = [0_u32, 1_u32, 2_u32];
 
         let (mut scene_buffer_obj, mut scene_array_obj, mut scene_element_buffer_obj) =
             (0_u32, 0_u32, 0_u32);
@@ -182,22 +187,33 @@ fn setup_scene() -> (GLuint, GLuint) {
             &scene_indices[0] as *const u32 as *const c_void,
             gl::STATIC_DRAW,
         );
+        // a_pos attribute
         gl::VertexAttribPointer(
             0,
             3,
             gl::FLOAT,
             gl::FALSE,
-            3 * mem::size_of::<GLfloat>() as GLsizei,
+            6 * mem::size_of::<GLfloat>() as GLsizei,
             ptr::null(),
         );
         gl::EnableVertexAttribArray(0);
+        // a_color attribute
+        gl::VertexAttribPointer(
+            1,
+            3,
+            gl::FLOAT,
+            gl::FALSE,
+            6 * mem::size_of::<GLfloat>() as GLsizei,
+            (3 * mem::size_of::<GLfloat>()) as *const c_void
+        );
+        gl::EnableVertexAttribArray(1);
 
         // Unbind VAO
         gl::BindBuffer(gl::ARRAY_BUFFER, 0);
         gl::BindVertexArray(0);
         gl::BindBuffer(gl::ELEMENT_ARRAY_BUFFER, 0);
 
-        // gl::PolygonMode(gl::FRONT_AND_BACK, gl::LINE);
+        // ogl::PolygonMode(ogl::FRONT_AND_BACK, ogl::LINE);
 
         (shader_program, scene_array_obj)
     }
@@ -215,7 +231,9 @@ pub fn main() {
                 Some(result) => {
                     window = result.0;
                     events = result.1;
-                    configure_gl(&mut window);
+                    unsafe {
+                        configure_gl(&mut window);
+                    }
                 }
                 None => {
                     eprintln!("Exiting due to GLFW Window creation failure.");
@@ -242,7 +260,7 @@ pub fn main() {
 
             gl::UseProgram(shader_program);
             gl::BindVertexArray(scene_array_obj);
-            gl::DrawElements(gl::TRIANGLES, 6, gl::UNSIGNED_INT, ptr::null());
+            gl::DrawArrays(gl::TRIANGLES, 0, 3);
             gl::BindVertexArray(0);
         }
 
