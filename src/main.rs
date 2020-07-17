@@ -1,6 +1,9 @@
 extern crate gl;
 extern crate glfw;
 
+mod ogl;
+
+use crate::ogl::graphics::ShaderProgram;
 use gl::types::*;
 use glfw::{Action, Context, Glfw, InitError, Key, Window, WindowEvent};
 use std::ffi::CString;
@@ -14,19 +17,15 @@ const INIT_HEIGHT: u32 = 600;
 const VERTEX_SHADER_SOURCE: &str = r#"
 #version 330 core
 layout (location = 0) in vec3 a_pos;
-layout (location = 1) in vec3 a_color;
-
-out vec3 our_color;
 
 void main() {
     gl_Position = vec4(a_pos, 1.0f);
-    our_color = a_color;
 }
 "#;
 
 const FRAGMENT_SHADER_SOURCE: &str = r#"
 #version 330 core
-in vec3 our_color;
+uniform vec3 our_color;
 
 out vec4 frag_color;
 
@@ -71,95 +70,17 @@ unsafe fn configure_gl(window: &mut Window) {
     gl::load_with(|symbol| window.get_proc_address(symbol) as *const _);
 }
 
-unsafe fn setup_program() -> GLuint {
-    let vertex_shader_obj = gl::CreateShader(gl::VERTEX_SHADER);
-    let vertex_shader_src = CString::new(VERTEX_SHADER_SOURCE.as_bytes()).unwrap();
-    gl::ShaderSource(
-        vertex_shader_obj,
-        1,
-        &vertex_shader_src.as_ptr(),
-        ptr::null(),
-    );
-    gl::CompileShader(vertex_shader_obj);
-    if let ShaderCompileStatus::FAILURE(err_msg) = get_shader_compile_status(vertex_shader_obj) {
-        eprintln!("Vertex shader compilation failed with error: {}", err_msg);
-        process::exit(1);
-    }
-
-    let fragment_shader_obj = gl::CreateShader(gl::FRAGMENT_SHADER);
-    let fragment_shader_src = CString::new(FRAGMENT_SHADER_SOURCE.as_bytes()).unwrap();
-    gl::ShaderSource(
-        fragment_shader_obj,
-        1,
-        &fragment_shader_src.as_ptr(),
-        ptr::null(),
-    );
-    gl::CompileShader(fragment_shader_obj);
-    if let ShaderCompileStatus::FAILURE(err_msg) = get_shader_compile_status(fragment_shader_obj) {
-        eprintln!("Fragment shader compilation failed with error: {}", err_msg);
-        process::exit(1);
-    }
-
-    let shader_program = gl::CreateProgram();
-    gl::AttachShader(shader_program, vertex_shader_obj);
-    gl::AttachShader(shader_program, fragment_shader_obj);
-    gl::LinkProgram(shader_program);
-
-    let mut link_success = gl::FALSE as GLint;
-    let mut link_log = Vec::with_capacity(512);
-    link_log.set_len(link_log.capacity() - 1);
-    gl::GetProgramiv(shader_program, gl::LINK_STATUS, &mut link_success);
-    if link_success != gl::TRUE as GLint {
-        gl::GetProgramInfoLog(
-            shader_program,
-            512,
-            ptr::null_mut(),
-            link_log.as_mut_ptr() as *mut GLchar,
-        );
-        eprintln!(
-            "Shader program linking failed with error: {}",
-            String::from_utf8(link_log).unwrap()
-        );
-        process::exit(1);
-    }
-
-    gl::DeleteShader(vertex_shader_obj);
-    gl::DeleteShader(fragment_shader_obj);
-
-    shader_program
+unsafe fn setup_program() -> ShaderProgram {
+    ShaderProgram::with_shaders(VERTEX_SHADER_SOURCE, FRAGMENT_SHADER_SOURCE)
+        .expect("Program setup failure")
 }
 
-enum ShaderCompileStatus {
-    SUCCESSFUL,
-    FAILURE(String),
-}
-
-unsafe fn get_shader_compile_status(shader_obj: GLuint) -> ShaderCompileStatus {
-    let mut compile_success = gl::FALSE as GLint;
-    let mut compile_log = Vec::with_capacity(512);
-    compile_log.set_len(compile_log.capacity() - 1);
-    gl::GetShaderiv(shader_obj, gl::COMPILE_STATUS, &mut compile_success);
-    if compile_success != gl::TRUE as GLint {
-        gl::GetShaderInfoLog(
-            shader_obj,
-            512,
-            ptr::null_mut(),
-            compile_log.as_mut_ptr() as *mut GLchar,
-        );
-        ShaderCompileStatus::FAILURE(String::from_utf8(compile_log).unwrap())
-    } else {
-        ShaderCompileStatus::SUCCESSFUL
-    }
-}
-
-fn setup_scene() -> (GLuint, GLuint) {
+fn setup_scene() -> (ShaderProgram, GLuint) {
     unsafe {
         let shader_program = setup_program();
 
         let scene_vertices = [
-            0.75_f32, -0.75_f32, 0.0_f32, 1.0_f32, 0.0_f32, 0.0_f32,
-            -0.75_f32, -0.75_f32, 0.0_f32, 0.0_f32, 1.0_f32, 0.0_f32,
-            0.0_f32, 0.75_f32, 0.0_f32, 0.0_f32, 0.0_f32, 1.0_f32
+            0.75_f32, -0.75_f32, 0.0_f32, -0.75_f32, -0.75_f32, 0.0_f32, 0.0_f32, 0.75_f32, 0.0_f32,
         ];
         let scene_indices = [0_u32, 1_u32, 2_u32];
 
@@ -193,20 +114,10 @@ fn setup_scene() -> (GLuint, GLuint) {
             3,
             gl::FLOAT,
             gl::FALSE,
-            6 * mem::size_of::<GLfloat>() as GLsizei,
+            3 * mem::size_of::<GLfloat>() as GLsizei,
             ptr::null(),
         );
         gl::EnableVertexAttribArray(0);
-        // a_color attribute
-        gl::VertexAttribPointer(
-            1,
-            3,
-            gl::FLOAT,
-            gl::FALSE,
-            6 * mem::size_of::<GLfloat>() as GLsizei,
-            (3 * mem::size_of::<GLfloat>()) as *const c_void
-        );
-        gl::EnableVertexAttribArray(1);
 
         // Unbind VAO
         gl::BindBuffer(gl::ARRAY_BUFFER, 0);
@@ -248,6 +159,8 @@ pub fn main() {
     }
 
     let (shader_program, scene_array_obj) = setup_scene();
+    shader_program.use_program();
+    let color_var_name = CString::new("our_color").unwrap();
 
     while !window.should_close() {
         // Process Events
@@ -258,7 +171,13 @@ pub fn main() {
             gl::ClearColor(0.2, 0.3, 0.3, 1.0);
             gl::Clear(gl::COLOR_BUFFER_BIT);
 
-            gl::UseProgram(shader_program);
+            shader_program.use_program();
+            let color = [
+                (glfw_obj.get_time() as f32).sin() * 0.5_f32 + 0.5_f32,
+                (glfw_obj.get_time() as f32).cos() * 0.5_f32 + 0.5_f32,
+                (glfw_obj.get_time() as f32).tanh() * 0.5_f32 + 0.5_f32,
+            ];
+            shader_program.set_vec3f(&color_var_name, color);
             gl::BindVertexArray(scene_array_obj);
             gl::DrawArrays(gl::TRIANGLES, 0, 3);
             gl::BindVertexArray(0);
