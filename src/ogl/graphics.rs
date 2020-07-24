@@ -1,10 +1,19 @@
 use gl::types::*;
 
 use crate::ogl::utils::{build_program, build_shader, clean_shader};
-use std::ffi::CStr;
+use image::{DynamicImage, GenericImageView, Pixel, Rgb};
+use std::ffi::{c_void, CStr};
+use std::path::Path;
 
 pub struct ShaderProgram {
     pub id: GLuint,
+}
+
+pub struct Texture {
+    pub id: GLuint,
+    pub width: u32,
+    pub height: u32,
+    data: Vec<[u8; 3]>,
 }
 
 impl ShaderProgram {
@@ -64,6 +73,56 @@ impl ShaderProgram {
                 1,
                 value.as_ptr(),
             );
+        }
+    }
+}
+
+impl Texture {
+    pub unsafe fn from_file(file_path: &str) -> Result<Texture, String> {
+        Self::load_data_from_file(file_path).and_then(|(width, height, data)| {
+            let mut texture_obj_id: GLuint = 0;
+            gl::GenTextures(1, &mut texture_obj_id);
+            Ok(Texture {
+                id: texture_obj_id,
+                width,
+                height,
+                data,
+            })
+        })
+    }
+
+    pub unsafe fn load(&mut self) {
+        gl::BindTexture(gl::TEXTURE_2D, self.id);
+
+        gl::TexParameteri(gl::TEXTURE_2D, gl::TEXTURE_WRAP_S, gl::REPEAT as i32);
+        gl::TexParameteri(gl::TEXTURE_2D, gl::TEXTURE_WRAP_T, gl::REPEAT as i32);
+        gl::TexParameteri(gl::TEXTURE_2D, gl::TEXTURE_MIN_FILTER, gl::LINEAR as i32);
+        gl::TexParameteri(gl::TEXTURE_2D, gl::TEXTURE_MAG_FILTER, gl::LINEAR as i32);
+
+        gl::TexImage2D(
+            gl::TEXTURE_2D,
+            0,
+            gl::RGB as i32,
+            self.width as i32,
+            self.height as i32,
+            0,
+            gl::RGB,
+            gl::UNSIGNED_BYTE,
+            self.data[0].as_ptr() as *const c_void,
+        );
+        gl::GenerateMipmap(gl::TEXTURE_2D);
+
+        self.data.clear();
+    }
+
+    fn load_data_from_file(file_path: &str) -> Result<(u32, u32, Vec<[u8; 3]>), String> {
+        match image::open(Path::new(file_path)) {
+            Ok(img) => {
+                let (width, height) = img.dimensions();
+                let data: Vec<_> = img.into_rgb().pixels().map(|p| p.0).collect();
+                Ok((width, height, data))
+            }
+            Err(err) => Err(err.to_string()),
         }
     }
 }

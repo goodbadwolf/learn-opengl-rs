@@ -48,16 +48,18 @@ pub unsafe fn build_program(
 
 unsafe fn get_shader_compile_status(shader_id: GLuint) -> Result<(), String> {
     let mut compile_success = gl::FALSE as GLint;
-    let mut compile_log = Vec::with_capacity(512);
-    compile_log.set_len(compile_log.capacity() - 1);
+    let mut compile_log = Vec::with_capacity(1024);
+    compile_log.set_len(1024 - 1);
+    let mut log_length: GLsizei = 0;
     gl::GetShaderiv(shader_id, gl::COMPILE_STATUS, &mut compile_success);
     if compile_success != gl::TRUE as GLint {
         gl::GetShaderInfoLog(
             shader_id,
-            512,
-            ptr::null_mut(),
+            1024,
+            &mut log_length,
             compile_log.as_mut_ptr() as *mut GLchar,
         );
+        compile_log.set_len(log_length as usize);
         Err(format!(
             "Shader compilation failed: {}",
             String::from_utf8(compile_log).unwrap()

@@ -3,7 +3,7 @@ extern crate glfw;
 
 mod ogl;
 
-use crate::ogl::graphics::ShaderProgram;
+use crate::ogl::graphics::{ShaderProgram, Texture};
 use gl::types::*;
 use glfw::{Action, Context, Glfw, InitError, Key, Window, WindowEvent};
 use std::ffi::CString;
@@ -17,20 +17,30 @@ const INIT_HEIGHT: u32 = 600;
 const VERTEX_SHADER_SOURCE: &str = r#"
 #version 330 core
 layout (location = 0) in vec3 a_pos;
+layout (location = 1) in vec3 a_color;
+layout (location = 2) in vec2 a_tex_coords;
+
+out vec3 o_color;
+out vec2 o_tex_coords;
 
 void main() {
     gl_Position = vec4(a_pos, 1.0f);
+    o_color = a_color;
+    o_tex_coords = a_tex_coords;
 }
 "#;
 
 const FRAGMENT_SHADER_SOURCE: &str = r#"
 #version 330 core
-uniform vec3 our_color;
+uniform sampler2D a_texture;
+
+in vec3 o_color;
+in vec2 o_tex_coords;
 
 out vec4 frag_color;
 
 void main() {
-    frag_color = vec4(our_color, 1.0f);
+    frag_color = texture(a_texture, o_tex_coords);
 }
 "#;
 
@@ -75,14 +85,24 @@ unsafe fn setup_program() -> ShaderProgram {
         .expect("Program setup failure")
 }
 
-fn setup_scene() -> (ShaderProgram, GLuint) {
+fn setup_scene() -> (ShaderProgram, GLuint, GLuint) {
     unsafe {
         let shader_program = setup_program();
 
+        #[rustfmt::skip]
         let scene_vertices = [
-            0.75_f32, -0.75_f32, 0.0_f32, -0.75_f32, -0.75_f32, 0.0_f32, 0.0_f32, 0.75_f32, 0.0_f32,
+            //  X         Y        Z        R        G        B       S        T
+             0.5_f32,  0.5_f32, 0.0_f32, 1.0_f32, 0.0_f32, 0.0_f32, 1.0_f32, 1.0_f32,
+             0.5_f32, -0.5_f32, 0.0_f32, 0.0_f32, 1.0_f32, 0.0_f32, 1.0_f32, 0.0_f32,
+            -0.5_f32, -0.5_f32, 0.0_f32, 0.0_f32, 0.0_f32, 1.0_f32, 0.0_f32, 0.0_f32,
+            -0.5_f32,  0.5_f32, 0.0_f32, 1.0_f32, 1.0_f32, 0.0_f32, 0.0_f32, 1.0_f32,
         ];
-        let scene_indices = [0_u32, 1_u32, 2_u32];
+
+        #[rustfmt::skip]
+        let scene_indices = [
+            0, 1, 3, // First triangle
+            1, 2, 3  // Second triangle
+        ];
 
         let (mut scene_buffer_obj, mut scene_array_obj, mut scene_element_buffer_obj) =
             (0_u32, 0_u32, 0_u32);
@@ -105,28 +125,54 @@ fn setup_scene() -> (ShaderProgram, GLuint) {
         gl::BufferData(
             gl::ELEMENT_ARRAY_BUFFER,
             (scene_indices.len() * mem::size_of::<GLuint>()) as GLsizeiptr,
-            &scene_indices[0] as *const u32 as *const c_void,
+            &scene_indices[0] as *const i32 as *const c_void,
             gl::STATIC_DRAW,
         );
+
+        let stride = 8 * mem::size_of::<GLfloat>() as GLsizei;
         // a_pos attribute
         gl::VertexAttribPointer(
             0,
             3,
             gl::FLOAT,
             gl::FALSE,
-            3 * mem::size_of::<GLfloat>() as GLsizei,
+            stride,
             ptr::null(),
         );
         gl::EnableVertexAttribArray(0);
+        // a_color attribute
+        gl::VertexAttribPointer(
+            1,
+            3,
+            gl::FLOAT,
+            gl::FALSE,
+            stride,
+            (3 * mem::size_of::<GLfloat>()) as *const c_void
+        );
+        gl::EnableVertexAttribArray(1);
+        // a_tex_coords attribute
+        gl::VertexAttribPointer(
+            2,
+            3,
+            gl::FLOAT,
+            gl::FALSE,
+            stride,
+            (6 * mem::size_of::<GLfloat>()) as *const c_void
+        );
+        gl::EnableVertexAttribArray(2);
+
 
         // Unbind VAO
         gl::BindBuffer(gl::ARRAY_BUFFER, 0);
         gl::BindVertexArray(0);
         gl::BindBuffer(gl::ELEMENT_ARRAY_BUFFER, 0);
 
+        let mut container_texture = Texture::from_file("resources/images/container.jpg").expect("Failed loading texture file");
+        container_texture.load();
+
         // ogl::PolygonMode(ogl::FRONT_AND_BACK, ogl::LINE);
 
-        (shader_program, scene_array_obj)
+        (shader_program, scene_array_obj, container_texture.id)
     }
 }
 
@@ -158,7 +204,7 @@ pub fn main() {
         }
     }
 
-    let (shader_program, scene_array_obj) = setup_scene();
+    let (shader_program, scene_array_obj, scene_tex_obj) = setup_scene();
     shader_program.use_program();
     let color_var_name = CString::new("our_color").unwrap();
 
@@ -172,15 +218,10 @@ pub fn main() {
             gl::Clear(gl::COLOR_BUFFER_BIT);
 
             shader_program.use_program();
-            let color = [
-                (glfw_obj.get_time() as f32).sin() * 0.5_f32 + 0.5_f32,
-                (glfw_obj.get_time() as f32).cos() * 0.5_f32 + 0.5_f32,
-                (glfw_obj.get_time() as f32).tanh() * 0.5_f32 + 0.5_f32,
-            ];
-            shader_program.set_vec3f(&color_var_name, color);
+            // gl::ActiveTexture(gl::TEXTURE0);
+            gl::BindTexture(gl::TEXTURE_2D, scene_tex_obj);
             gl::BindVertexArray(scene_array_obj);
-            gl::DrawArrays(gl::TRIANGLES, 0, 3);
-            gl::BindVertexArray(0);
+            gl::DrawElements(gl::TRIANGLES, 6, gl::UNSIGNED_INT, ptr::null());
         }
 
         // Swap buffer and poll events
