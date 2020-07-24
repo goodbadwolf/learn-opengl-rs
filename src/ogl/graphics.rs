@@ -78,8 +78,8 @@ impl ShaderProgram {
 }
 
 impl Texture {
-    pub unsafe fn from_file(file_path: &str) -> Result<Texture, String> {
-        Self::load_data_from_file(file_path).and_then(|(width, height, data)| {
+    pub unsafe fn from_file(file_path: &str, flip_vertically: bool) -> Result<Texture, String> {
+        Self::load_data_from_file(file_path, flip_vertically).and_then(|(width, height, data)| {
             let mut texture_obj_id: GLuint = 0;
             gl::GenTextures(1, &mut texture_obj_id);
             Ok(Texture {
@@ -115,9 +115,10 @@ impl Texture {
         self.data.clear();
     }
 
-    fn load_data_from_file(file_path: &str) -> Result<(u32, u32, Vec<[u8; 3]>), String> {
+    fn load_data_from_file(file_path: &str, flip_vertically: bool) -> Result<(u32, u32, Vec<[u8; 3]>), String> {
         match image::open(Path::new(file_path)) {
             Ok(img) => {
+                let img = img.flipv();
                 let (width, height) = img.dimensions();
                 let data: Vec<_> = img.into_rgb().pixels().map(|p| p.0).collect();
                 Ok((width, height, data))

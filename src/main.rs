@@ -6,7 +6,7 @@ mod ogl;
 use crate::ogl::graphics::{ShaderProgram, Texture};
 use gl::types::*;
 use glfw::{Action, Context, Glfw, InitError, Key, Window, WindowEvent};
-use std::ffi::CString;
+use std::ffi::{CStr, CString};
 use std::os::raw::c_void;
 use std::sync::mpsc::Receiver;
 use std::{mem, process, ptr};
@@ -32,7 +32,8 @@ void main() {
 
 const FRAGMENT_SHADER_SOURCE: &str = r#"
 #version 330 core
-uniform sampler2D a_texture;
+uniform sampler2D a_texture1;
+uniform sampler2D a_texture2;
 
 in vec3 o_color;
 in vec2 o_tex_coords;
@@ -40,7 +41,7 @@ in vec2 o_tex_coords;
 out vec4 frag_color;
 
 void main() {
-    frag_color = texture(a_texture, o_tex_coords);
+    frag_color = mix(texture(a_texture1, o_tex_coords), texture(a_texture2, o_tex_coords), 0.2f);
 }
 "#;
 
@@ -85,7 +86,7 @@ unsafe fn setup_program() -> ShaderProgram {
         .expect("Program setup failure")
 }
 
-fn setup_scene() -> (ShaderProgram, GLuint, GLuint) {
+fn setup_scene() -> (ShaderProgram, GLuint, Vec<GLuint>) {
     unsafe {
         let shader_program = setup_program();
 
@@ -131,14 +132,7 @@ fn setup_scene() -> (ShaderProgram, GLuint, GLuint) {
 
         let stride = 8 * mem::size_of::<GLfloat>() as GLsizei;
         // a_pos attribute
-        gl::VertexAttribPointer(
-            0,
-            3,
-            gl::FLOAT,
-            gl::FALSE,
-            stride,
-            ptr::null(),
-        );
+        gl::VertexAttribPointer(0, 3, gl::FLOAT, gl::FALSE, stride, ptr::null());
         gl::EnableVertexAttribArray(0);
         // a_color attribute
         gl::VertexAttribPointer(
@@ -147,7 +141,7 @@ fn setup_scene() -> (ShaderProgram, GLuint, GLuint) {
             gl::FLOAT,
             gl::FALSE,
             stride,
-            (3 * mem::size_of::<GLfloat>()) as *const c_void
+            (3 * mem::size_of::<GLfloat>()) as *const c_void,
         );
         gl::EnableVertexAttribArray(1);
         // a_tex_coords attribute
@@ -157,22 +151,33 @@ fn setup_scene() -> (ShaderProgram, GLuint, GLuint) {
             gl::FLOAT,
             gl::FALSE,
             stride,
-            (6 * mem::size_of::<GLfloat>()) as *const c_void
+            (6 * mem::size_of::<GLfloat>()) as *const c_void,
         );
         gl::EnableVertexAttribArray(2);
-
 
         // Unbind VAO
         gl::BindBuffer(gl::ARRAY_BUFFER, 0);
         gl::BindVertexArray(0);
         gl::BindBuffer(gl::ELEMENT_ARRAY_BUFFER, 0);
 
-        let mut container_texture = Texture::from_file("resources/images/container.jpg").expect("Failed loading texture file");
+        let mut container_texture = Texture::from_file("resources/images/container.jpg", true)
+            .expect("Failed loading texture file");
         container_texture.load();
+        let mut face_texture = Texture::from_file("resources/images/awesomeface.png", true)
+            .expect("Failed loading texture file");
+        face_texture.load();
+
+        shader_program.use_program();
+        shader_program.set_int(&CString::new("a_texture1").unwrap(), 0);
+        shader_program.set_int(&CString::new("a_texture2").unwrap(), 1);
 
         // ogl::PolygonMode(ogl::FRONT_AND_BACK, ogl::LINE);
 
-        (shader_program, scene_array_obj, container_texture.id)
+        (
+            shader_program,
+            scene_array_obj,
+            vec![container_texture.id, face_texture.id],
+        )
     }
 }
 
@@ -204,9 +209,8 @@ pub fn main() {
         }
     }
 
-    let (shader_program, scene_array_obj, scene_tex_obj) = setup_scene();
+    let (shader_program, scene_array_obj, scene_tex_objs) = setup_scene();
     shader_program.use_program();
-    let color_var_name = CString::new("our_color").unwrap();
 
     while !window.should_close() {
         // Process Events
@@ -218,8 +222,10 @@ pub fn main() {
             gl::Clear(gl::COLOR_BUFFER_BIT);
 
             shader_program.use_program();
-            // gl::ActiveTexture(gl::TEXTURE0);
-            gl::BindTexture(gl::TEXTURE_2D, scene_tex_obj);
+            for (tex_i, tex_obj) in scene_tex_objs.iter().enumerate() {
+                gl::ActiveTexture(gl::TEXTURE0 + tex_i as u32);
+                gl::BindTexture(gl::TEXTURE_2D, *tex_obj);
+            }
             gl::BindVertexArray(scene_array_obj);
             gl::DrawElements(gl::TRIANGLES, 6, gl::UNSIGNED_INT, ptr::null());
         }
