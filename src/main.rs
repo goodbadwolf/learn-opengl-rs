@@ -6,7 +6,7 @@ mod ogl;
 use crate::ogl::graphics::{ShaderProgram, Texture};
 use gl::types::*;
 use glfw::{Action, Context, Glfw, InitError, Key, Window, WindowEvent};
-use std::ffi::{CStr, CString};
+use std::ffi::CString;
 use std::os::raw::c_void;
 use std::sync::mpsc::Receiver;
 use std::{mem, process, ptr};
