@@ -1,11 +1,9 @@
-extern crate gl;
-extern crate glfw;
-
 mod ogl;
 
 use crate::ogl::graphics::{ShaderProgram, Texture};
 use gl::types::*;
 use glfw::{Action, Context, Glfw, InitError, Key, Window, WindowEvent};
+use nalgebra_glm as glm;
 use std::ffi::CString;
 use std::os::raw::c_void;
 use std::sync::mpsc::Receiver;
@@ -20,11 +18,13 @@ layout (location = 0) in vec3 a_pos;
 layout (location = 1) in vec3 a_color;
 layout (location = 2) in vec2 a_tex_coords;
 
+uniform mat4 a_transform;
+
 out vec3 o_color;
 out vec2 o_tex_coords;
 
 void main() {
-    gl_Position = vec4(a_pos, 1.0f);
+    gl_Position = a_transform * vec4(a_pos, 1.0f);
     o_color = a_color;
     o_tex_coords = a_tex_coords;
 }
@@ -210,7 +210,7 @@ pub fn main() {
     }
 
     let (shader_program, scene_array_obj, scene_tex_objs) = setup_scene();
-    shader_program.use_program();
+    let transform_name = &CString::new("a_transform").unwrap();
 
     while !window.should_close() {
         // Process Events
@@ -227,6 +227,23 @@ pub fn main() {
                 gl::BindTexture(gl::TEXTURE_2D, *tex_obj);
             }
             gl::BindVertexArray(scene_array_obj);
+            // Transform and render first container
+            let transform = glm::Mat4::identity();
+            let transform = glm::rotate(
+                &transform,
+                glfw_obj.get_time() as f32,
+                &glm::vec3(0.0_f32, 0.0_f32, 1.0_f32),
+            );
+            shader_program.set_mat4f(transform_name, &transform);
+            gl::DrawElements(gl::TRIANGLES, 6, gl::UNSIGNED_INT, ptr::null());
+
+            // Transform and render second container
+            let transform = glm::Mat4::identity();
+            let transform = glm::translate(&transform, &glm::vec3(0.3_f32, -0.3_f32, 0.0_f32));
+            let scale_1 = (glfw_obj.get_time() as f32).sin().abs();
+            let scale_2 = (glfw_obj.get_time() as f32).cos().abs();
+            let transform = glm::scale(&transform, &glm::vec3(scale_1, scale_2, 1.0_f32));
+            shader_program.set_mat4f(transform_name, &transform);
             gl::DrawElements(gl::TRIANGLES, 6, gl::UNSIGNED_INT, ptr::null());
         }
 

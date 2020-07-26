@@ -1,4 +1,6 @@
 use gl::types::*;
+use glm::Mat4;
+use nalgebra_glm as glm;
 
 use crate::ogl::utils::{build_program, build_shader, clean_shader};
 use image::GenericImageView;
@@ -76,6 +78,18 @@ impl ShaderProgram {
                 gl::GetUniformLocation(self.id, name.as_ptr()),
                 1,
                 value.as_ptr(),
+            );
+        }
+    }
+
+    #[allow(dead_code)]
+    pub fn set_mat4f(&self, name: &CStr, value: &Mat4) {
+        unsafe {
+            gl::UniformMatrix4fv(
+                gl::GetUniformLocation(self.id, name.as_ptr()),
+                1,
+                gl::FALSE,
+                glm::value_ptr(value).as_ptr(),
             );
         }
     }
