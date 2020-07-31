@@ -230,16 +230,13 @@ fn setup_scene() -> (ShaderProgram, GLuint, Vec<GLuint>, Vec<Vec3>) {
     }
 }
 
-fn setup_coordinate_systems(_: &Glfw) -> (Mat4, Mat4) {
-    let mut view_from_world = glm::Mat4::identity();
-    view_from_world = glm::translate(&view_from_world, &glm::vec3(0.0_f32, 0.0_f32, -3.0_f32));
-
+fn setup_coordinate_systems(_: &Glfw) -> Mat4 {
     let aspect_ratio = (INIT_WIDTH as f32) / (INIT_HEIGHT as f32);
     let angle = 45.0_f32;
     let projection_from_view =
         glm::perspective(aspect_ratio, angle.to_radians(), 0.1_f32, 100.0_f32);
 
-    (view_from_world, projection_from_view)
+    projection_from_view
 }
 
 pub fn main() {
@@ -271,7 +268,7 @@ pub fn main() {
     }
 
     let (shader_program, scene_array_obj, scene_tex_objs, cube_positions) = setup_scene();
-    let (view_from_world, projection_from_view) = setup_coordinate_systems(&glfw_obj);
+    let projection_from_view = setup_coordinate_systems(&glfw_obj);
     let world_from_object_name = CString::new("world_from_object").unwrap();
     let view_from_world_name = CString::new("view_from_world").unwrap();
     let projection_from_view_name = CString::new("projection_from_view").unwrap();
@@ -284,17 +281,29 @@ pub fn main() {
         unsafe {
             gl::ClearColor(0.2, 0.3, 0.3, 1.0);
             gl::Clear(gl::COLOR_BUFFER_BIT | gl::DEPTH_BUFFER_BIT);
+
             shader_program.use_program();
+
             for (tex_i, tex_obj) in scene_tex_objs.iter().enumerate() {
                 gl::ActiveTexture(gl::TEXTURE0 + tex_i as u32);
                 gl::BindTexture(gl::TEXTURE_2D, *tex_obj);
             }
+
             gl::BindVertexArray(scene_array_obj);
+            let radius = 5.0_f32;
+            let camera_x = glfw_obj.get_time().sin() as f32 * radius;
+            let camera_z = glfw_obj.get_time().cos() as f32 * radius;
+            let view_from_world = glm::look_at(
+                &glm::vec3(camera_x, 0.0_f32, camera_z),
+                &glm::vec3(0.0_f32, 0.0_f32, 0.0_f32),
+                &glm::vec3(0.0_f32, 1.0_f32, 0.0_f32),
+            );
             shader_program.set_mat4f(&view_from_world_name, &view_from_world);
             shader_program.set_mat4f(&projection_from_view_name, &projection_from_view);
+
             for (i, position) in cube_positions.iter().enumerate() {
-                let mut world_from_object = glm::Mat4::identity();
-                let angle = (20.0_f32 * (i + 1) as f32 * glfw_obj.get_time() as f32).to_radians();
+                let mut world_from_object = Mat4::identity();
+                let angle = (20.0_f32 * i as f32).to_radians();
                 world_from_object = glm::translate(&world_from_object, &position);
                 world_from_object = glm::rotate(
                     &world_from_object,
