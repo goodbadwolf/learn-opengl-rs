@@ -1,9 +1,9 @@
 mod math;
 mod ogl;
 
-use crate::ogl::graphics::{ShaderProgram, Texture};
+use crate::ogl::graphics::{ShaderProgram, Texture, Camera};
 use gl::types::*;
-use glfw::{Action, Context, Glfw, InitError, Key, Window, WindowEvent};
+use glfw::{Action, Context, Glfw, InitError, Key, Window, WindowEvent, WindowHint, SwapInterval};
 use glm::{Mat4, Vec3};
 use nalgebra_glm as glm;
 use std::ffi::CString;
@@ -49,12 +49,13 @@ void main() {
 fn configure_glfw() -> Result<Glfw, InitError> {
     match glfw::init(glfw::FAIL_ON_ERRORS) {
         Ok(mut glfw_obj) => {
-            glfw_obj.window_hint(glfw::WindowHint::OpenGlProfile(
+            glfw_obj.window_hint(WindowHint::OpenGlProfile(
                 glfw::OpenGlProfileHint::Core,
             ));
-            glfw_obj.window_hint(glfw::WindowHint::ContextVersion(3, 3));
+            glfw_obj.window_hint(WindowHint::ContextVersion(3, 3));
             #[cfg(target_os = "macos")]
-            glfw_obj.window_hint(glfw::WindowHint::OpenGlForwardCompat(true));
+            glfw_obj.window_hint(WindowHint::OpenGlForwardCompat(true));
+            glfw_obj.window_hint(WindowHint::DoubleBuffer(false));
             Ok(glfw_obj)
         }
         Err(e) => Err(e),
@@ -72,6 +73,8 @@ fn create_window(glfw_obj: &mut Glfw) -> Option<(Window, Receiver<(f64, WindowEv
             window.make_current();
             window.set_key_polling(true);
             window.set_framebuffer_size_polling(true);
+            // Disable VSync
+            glfw_obj.set_swap_interval(SwapInterval::None);
             Some((window, events))
         }
         None => None,
@@ -271,11 +274,34 @@ pub fn main() {
     let projection_from_view = setup_coordinate_systems(&glfw_obj);
     let world_from_object_name = CString::new("world_from_object").unwrap();
     let view_from_world_name = CString::new("view_from_world").unwrap();
-    let projection_from_view_name = CString::new("projection_from_view").unwrap();
+    shader_program.set_mat4f(&CString::new("projection_from_view").unwrap(), &projection_from_view);
 
+    let mut camera = Camera {
+        position: glm::vec3(0.0_f32, 0.0_f32, 3.0_f32),
+        front: glm::vec3(0.0_f32, 0.0_f32, -1.0_f32),
+        up: glm::vec3(0.0_f32, 1.0_f32, 0.0_f32)
+    };
+
+    let mut last_frame = 0.0_f32;
+    let mut fps_time = glfw_obj.get_time() as f32;
+    let mut fps_frames = 0;
     while !window.should_close() {
         // Process Events
-        process_events(&mut window, &events);
+        process_events(&events);
+
+        let current_frame = glfw_obj.get_time() as f32;
+        let delta_time = current_frame - last_frame;
+        last_frame = current_frame;
+
+        if current_frame - fps_time >= 1.0_f32 {
+            println!("Avg FPS = {}, Avg frame_time= {}", fps_frames, 1.0_f32 / fps_frames as f32);
+            fps_time = glfw_obj.get_time() as f32;
+            fps_frames = 0;
+        } else {
+            fps_frames += 1;
+        }
+
+        process_inputs(&mut window, &mut camera, delta_time);
 
         // Render
         unsafe {
@@ -290,16 +316,7 @@ pub fn main() {
             }
 
             gl::BindVertexArray(scene_array_obj);
-            let radius = 5.0_f32;
-            let camera_x = glfw_obj.get_time().sin() as f32 * radius;
-            let camera_z = glfw_obj.get_time().cos() as f32 * radius;
-            let view_from_world = glm::look_at(
-                &glm::vec3(camera_x, 0.0_f32, camera_z),
-                &glm::vec3(0.0_f32, 0.0_f32, 0.0_f32),
-                &glm::vec3(0.0_f32, 1.0_f32, 0.0_f32),
-            );
-            shader_program.set_mat4f(&view_from_world_name, &view_from_world);
-            shader_program.set_mat4f(&projection_from_view_name, &projection_from_view);
+            shader_program.set_mat4f(&view_from_world_name, &camera.view_matrix());
 
             for (i, position) in cube_positions.iter().enumerate() {
                 let mut world_from_object = Mat4::identity();
@@ -317,19 +334,41 @@ pub fn main() {
         }
 
         // Swap buffer and poll events
-        window.swap_buffers();
+        // window.swap_buffers();
+        unsafe {
+            gl::Flush();
+        }
         glfw_obj.poll_events();
     }
 }
 
-fn process_events(window: &mut Window, events: &Receiver<(f64, WindowEvent)>) {
+fn process_events(events: &Receiver<(f64, WindowEvent)>) {
     for (_, event) in glfw::flush_messages(events) {
         match event {
             WindowEvent::FramebufferSize(width, height) => unsafe {
                 gl::Viewport(0, 0, width, height);
             },
-            WindowEvent::Key(Key::Escape, _, Action::Press, _) => window.set_should_close(true),
             _ => {}
         }
+    }
+}
+
+fn process_inputs(window: &mut Window, camera: &mut Camera, delta_time: f32) {
+    if window.get_key(Key::Escape) == Action::Press {
+        window.set_should_close(true);
+    }
+
+    let camera_speed = delta_time * 2.5_f32;
+    if window.get_key(Key::W) == Action::Press {
+        camera.position += camera_speed * &camera.front;
+    }
+    if window.get_key(Key::S) == Action::Press {
+        camera.position -= camera_speed * &camera.front;
+    }
+    if window.get_key(Key::A) == Action::Press {
+        camera.position -= camera_speed * &camera.front.cross(&camera.up).normalize();
+    }
+    if window.get_key(Key::D) == Action::Press {
+        camera.position += camera_speed * &camera.front.cross(&camera.up).normalize();
     }
 }

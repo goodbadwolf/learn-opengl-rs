@@ -1,5 +1,5 @@
 use gl::types::*;
-use glm::Mat4;
+use glm::{Mat4, Vec3};
 use nalgebra_glm as glm;
 
 use crate::ogl::utils::{build_program, build_shader, clean_shader};
@@ -16,6 +16,12 @@ pub struct Texture {
     pub width: u32,
     pub height: u32,
     data: Vec<[u8; 3]>,
+}
+
+pub struct Camera {
+    pub position: Vec3,
+    pub front: Vec3,
+    pub up: Vec3,
 }
 
 impl ShaderProgram {
@@ -146,5 +152,11 @@ impl Texture {
             }
             Err(err) => Err(err.to_string()),
         }
+    }
+}
+
+impl Camera {
+    pub fn view_matrix(&self) -> Mat4 {
+        glm::look_at(&self.position, &(&self.position + &self.front), &self.up)
     }
 }
