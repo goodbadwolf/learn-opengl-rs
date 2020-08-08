@@ -22,6 +22,8 @@ pub struct Camera {
     pub position: Vec3,
     pub front: Vec3,
     pub up: Vec3,
+    pub yaw: f32,
+    pub pitch: f32,
 }
 
 impl ShaderProgram {
